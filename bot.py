@@ -10,40 +10,43 @@ import asyncio
 
 # ===== Cargar env =====
 load_dotenv()
+
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-PORT = int(os.getenv("PORT", 8080))
+PORT = int(os.getenv("PORT", "8080"))
 
 INTENTS = discord.Intents.default()
 INTENTS.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=INTENTS)
 
-# ======== IA DeepSeek ========
-async def deepseek_generate(prompt: str) -> str:
-    url = "https://api.deepseek.com/chat/completions"
+# ========= IA DeepSeek ==========
 
+async def deepseek_generate(prompt):
+    url = "https://api.deepseek.com/chat/completions"
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json"
     }
-
     payload = {
         "model": "deepseek-chat",
         "messages": [{"role": "user", "content": prompt}]
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload, headers=headers) as resp:
-            data = await resp.json()
-            if "choices" in data:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                data = await resp.json()
                 return data["choices"][0]["message"]["content"]
-            return f"⚠️ Error en la API:\n```json\n{data}\n```"
+    except Exception as e:
+        return f"⚠ Error: {e}"
 
-# ===== DISCORD =====
+# ========= EVENTOS DISCORD ==========
+
 @bot.event
 async def on_ready():
     await bot.tree.sync()
-    print(f"BOT LISTO como {bot.user}")
+    print(f"BOT listo como {bot.user}")
 
 @bot.tree.command(name="ask", description="Pregunta al bot")
 async def ask(interaction: discord.Interaction, pregunta: str):
@@ -53,19 +56,20 @@ async def ask(interaction: discord.Interaction, pregunta: str):
 
 @bot.tree.command(name="attack", description="Ataque narrado")
 async def attack(interaction: discord.Interaction, accion: str):
-    prompt = f"Describe un ataque de rol: {accion}. Sé épico y breve."
+    prompt = f"Genera un ataque RPG basado en: {accion}"
     await interaction.response.defer(thinking=True)
     respuesta = await deepseek_generate(prompt)
     await interaction.followup.send(respuesta)
 
-# ======== SERVIDOR WEB PARA RENDER ========
-async def handle(request):
-    return web.Response(text="Bot is running", content_type="text/plain")
+# ========= SERVIDOR WEB PARA RENDER ==========
 
-def start_web_server():
-    async def _run():
+async def healthcheck(request):
+    return web.Response(text="Bot is running", status=200)
+
+def start_webserver():
+    async def runner():
         app = web.Application()
-        app.router.add_get("/", handle)
+        app.router.add_get("/", healthcheck)
 
         runner = web.AppRunner(app)
         await runner.setup()
@@ -79,9 +83,10 @@ def start_web_server():
             await asyncio.sleep(3600)
 
     loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(_run())
+    loop.run_until_complete(runner())
+
+# ========= EJECUCIÓN =========
 
 if __name__ == "__main__":
-    threading.Thread(target=start_web_server).start()
+    threading.Thread(target=start_webserver, daemon=True).start()
     bot.run(DISCORD_TOKEN)
