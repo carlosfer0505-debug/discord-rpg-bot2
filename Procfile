@@ -1,3 +1,1 @@
-discord.py==2.3.2
-aiohttp
-python-dotenv
+web: python bot.py
