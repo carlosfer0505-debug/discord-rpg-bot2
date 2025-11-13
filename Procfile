@@ -1,1 +1,3 @@
-worker: python bot.py
+discord.py==2.3.2
+aiohttp
+python-dotenv
